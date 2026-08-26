@@ -11,7 +11,7 @@ class HackerNewsProvider(BaseProvider):
     async def search(self, client: httpx.AsyncClient, query: str) -> List[SearchResult]:
         params = {
             "query": query,
-            "tags": "story",  # Focus on stories/articles rather than comments
+            "tags": "story",
             "hitsPerPage": 10
         }
         
@@ -22,23 +22,23 @@ class HackerNewsProvider(BaseProvider):
             
             hits = data.get("hits", [])
             results = []
-            for hit in hits:
+            for idx, hit in enumerate(hits):
                 title = hit.get("title") or hit.get("story_title")
                 if not title:
                     continue
                 
                 object_id = hit.get("objectID")
-                # Use external URL if available, fallback to HN discussion page
                 url = hit.get("url") or f"https://news.ycombinator.com/item?id={object_id}"
                 
                 story_text = hit.get("story_text")
-                points = hit.get("points")
+                points = hit.get("points") or 0
                 comments = hit.get("num_comments")
                 author = hit.get("author")
+                published_date = hit.get("created_at")  # Algolia returns ISO string
                 
                 # Format description cleanly
                 meta_parts = []
-                if points is not None:
+                if points:
                     meta_parts.append(f"{points} points")
                 if comments is not None:
                     meta_parts.append(f"{comments} comments")
@@ -48,18 +48,27 @@ class HackerNewsProvider(BaseProvider):
                 meta_str = " | ".join(meta_parts)
                 
                 if story_text:
-                    # Clean up HTML entities in story text
                     clean_text = html.unescape(story_text).replace("<p>", " ").replace("</p>", "")
-                    description = f"{clean_text[:200]}... ({meta_str})" if len(clean_text) > 200 else f"{clean_text} ({meta_str})"
+                    snippet = f"{clean_text[:200]}... ({meta_str})" if len(clean_text) > 200 else f"{clean_text} ({meta_str})"
                 else:
-                    description = f"Discussion on Hacker News. {meta_str}"
+                    snippet = f"Discussion on Hacker News. {meta_str}"
+                
+                domain = self.extract_domain(url)
+                
+                # Position-based score (10.0 to 1.0) + popularity bonus (up to 5.0 points)
+                position_score = float(max(1.0, 10.0 - idx))
+                popularity_bonus = min(5.0, points / 100.0)
+                raw_score = position_score + popularity_bonus
                 
                 results.append(
                     SearchResult(
                         title=title,
                         url=url,
-                        description=description,
-                        source=self.name
+                        domain=domain,
+                        snippet=snippet,
+                        source=self.name,
+                        published_date=published_date,
+                        raw_score=raw_score
                     )
                 )
             return results

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { 
   Search, 
   BookOpen, 
@@ -7,7 +7,8 @@ import {
   ExternalLink, 
   AlertCircle, 
   Compass, 
-  ArrowRight
+  ArrowRight,
+  Globe
 } from "lucide-react";
 import "./App.css";
 
@@ -22,7 +23,6 @@ function App() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Suggestions for the landing view
   const suggestions = [
     "Quantum Computing",
     "Machine Learning",
@@ -35,12 +35,12 @@ function App() {
     if (e) e.preventDefault();
     
     const targetQuery = queryText || query;
-    if (!targetQuery.strip ? !targetQuery.trim() : !targetQuery.trim()) return;
+    if (!targetQuery || !targetQuery.trim()) return;
 
     setLoading(true);
     setError(null);
     setSearchQuery(targetQuery);
-    setQuery(targetQuery); // keep input in sync
+    setQuery(targetQuery);
     
     try {
       const response = await fetch(`${BACKEND_URL}/search?q=${encodeURIComponent(targetQuery)}`);
@@ -50,6 +50,7 @@ function App() {
       const data = await response.json();
       setResults(data.results || []);
       setHasSearched(true);
+      setActiveFilter("all"); // reset filter on new search
     } catch (err) {
       console.error(err);
       setError("Unable to retrieve search results. Make sure the backend server is running.");
@@ -61,13 +62,19 @@ function App() {
   const getSourceIcon = (source) => {
     switch (source) {
       case "wikipedia":
-        return <BookOpen size={16} />;
+        return <BookOpen size={14} />;
       case "hackernews":
-        return <Newspaper size={16} />;
+        return <Newspaper size={14} />;
       case "arxiv":
-        return <FileText size={16} />;
+        return <FileText size={14} />;
+      case "duckduckgo":
+        return <Globe size={14} />;
+      case "google":
+        return <Search size={14} />;
+      case "bing":
+        return <Search size={14} />;
       default:
-        return <Compass size={16} />;
+        return <Compass size={14} />;
     }
   };
 
@@ -79,36 +86,60 @@ function App() {
         return "Hacker News";
       case "arxiv":
         return "arXiv";
+      case "duckduckgo":
+        return "DuckDuckGo";
+      case "google":
+        return "Google";
+      case "bing":
+        return "Bing";
       default:
-        return source;
+        return source.charAt(0).toUpperCase() + source.slice(1);
     }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      return date.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  // Helper to parse sources list from result (handles merged sources)
+  const getSourcesList = (sourceStr) => {
+    return sourceStr.split(",").map(s => s.trim());
   };
 
   // Filtered results calculation
   const filteredResults = activeFilter === "all" 
     ? results 
-    : results.filter(r => r.source === activeFilter);
+    : results.filter(r => getSourcesList(r.source).includes(activeFilter));
 
   // Count results per source
   const getSourceCount = (sourceName) => {
     if (sourceName === "all") return results.length;
-    return results.filter(r => r.source === sourceName).length;
+    return results.filter(r => getSourcesList(r.source).includes(sourceName)).length;
   };
 
   return (
     <>
-      {/* Header Area */}
       <header className="header">
         <div className="logo-container">
           <Search size={38} className="logo-icon" />
           <h1 className="logo-text">FIND-engine</h1>
         </div>
         <p className="logo-sub">
-          A high-performance search aggregator. Explore Wikipedia, Hacker News, and arXiv concurrently.
+          A high-performance search aggregator. Explore Wikipedia, Hacker News, arXiv, DuckDuckGo, Google, and Bing.
         </p>
       </header>
 
-      {/* Search Input Box */}
       <div className="search-container">
         <form onSubmit={(e) => handleSearch(e)}>
           <div className="search-box">
@@ -130,7 +161,6 @@ function App() {
         </form>
       </div>
 
-      {/* Suggestion Chips (Before Searching) */}
       {!hasSearched && !loading && (
         <div className="suggestions-container">
           <span className="suggestion-label">Try searching:</span>
@@ -146,7 +176,6 @@ function App() {
         </div>
       )}
 
-      {/* Search Error Indicator */}
       {error && (
         <div className="no-results-state" style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}>
           <AlertCircle size={40} style={{ color: "#ef4444", marginBottom: "16px" }} />
@@ -162,7 +191,6 @@ function App() {
         </div>
       )}
 
-      {/* Skeleton Loading State */}
       {loading && (
         <div className="results-section">
           {[...Array(5)].map((_, i) => (
@@ -179,10 +207,8 @@ function App() {
         </div>
       )}
 
-      {/* Results Rendering */}
       {hasSearched && !loading && !error && (
         <>
-          {/* Provider Filter Chips */}
           <div className="filter-bar">
             <button
               onClick={() => setActiveFilter("all")}
@@ -215,12 +241,36 @@ function App() {
               arXiv
               <span className="filter-badge">{getSourceCount("arxiv")}</span>
             </button>
+            <button
+              onClick={() => setActiveFilter("duckduckgo")}
+              className={`filter-btn source-duckduckgo ${activeFilter === "duckduckgo" ? "active" : ""}`}
+            >
+              {getSourceIcon("duckduckgo")}
+              DuckDuckGo
+              <span className="filter-badge">{getSourceCount("duckduckgo")}</span>
+            </button>
+            <button
+              onClick={() => setActiveFilter("google")}
+              className={`filter-btn source-google ${activeFilter === "google" ? "active" : ""}`}
+            >
+              {getSourceIcon("google")}
+              Google
+              <span className="filter-badge">{getSourceCount("google")}</span>
+            </button>
+            <button
+              onClick={() => setActiveFilter("bing")}
+              className={`filter-btn source-bing ${activeFilter === "bing" ? "active" : ""}`}
+            >
+              {getSourceIcon("bing")}
+              Bing
+              <span className="filter-badge">{getSourceCount("bing")}</span>
+            </button>
           </div>
 
           <div className="results-section">
             <div className="results-info">
               <span>
-                Found {results.length} results for <strong>"{searchQuery}"</strong>
+                Found {results.length} unique results for <strong>"{searchQuery}"</strong>
               </span>
               {activeFilter !== "all" && (
                 <span>
@@ -231,7 +281,7 @@ function App() {
 
             {filteredResults.length > 0 ? (
               filteredResults.map((result, idx) => (
-                <article key={`${result.source}-${idx}`} className="result-card">
+                <article key={`${result.domain}-${idx}`} className="result-card">
                   <div className="result-card-header">
                     <a
                       href={result.url}
@@ -241,19 +291,35 @@ function App() {
                     >
                       {result.title}
                     </a>
-                    <span className={`source-badge ${result.source}`}>
-                      {getSourceLabel(result.source)}
-                    </span>
+                    <div className="source-badges-container">
+                      {getSourcesList(result.source).map(src => (
+                        <span key={src} className={`source-badge ${src}`}>
+                          {getSourceLabel(src)}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+                  
+                  <div className="result-meta-row">
+                    <span className="result-domain">{result.domain}</span>
+                    {result.published_date && (
+                      <>
+                        <span className="meta-dot">•</span>
+                        <span className="result-date">{formatDate(result.published_date)}</span>
+                      </>
+                    )}
+                  </div>
+                  
+                  <p className="result-description">{result.snippet}</p>
+                  
                   <a
                     href={result.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="result-url"
+                    className="result-url-action"
                   >
-                    {result.url} <ExternalLink size={12} style={{ marginLeft: "4px", verticalAlign: "middle" }} />
+                    Visit Source <ExternalLink size={12} style={{ marginLeft: "4px" }} />
                   </a>
-                  <p className="result-description">{result.description}</p>
                 </article>
               ))
             ) : (
@@ -267,7 +333,6 @@ function App() {
         </>
       )}
 
-      {/* Welcome Landing (Initial State) */}
       {!hasSearched && !loading && !error && (
         <div className="initial-state">
           <div className="initial-graphic">
