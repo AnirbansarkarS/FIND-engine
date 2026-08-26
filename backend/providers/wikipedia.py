@@ -10,9 +10,7 @@ class WikipediaProvider(BaseProvider):
         self.html_tag_re = re.compile(r"<[^>]+>")
 
     def _clean_snippet(self, text: str) -> str:
-        # Strip HTML tags like <span class="searchmatch">
         cleaned = self.html_tag_re.sub("", text)
-        # Decode HTML entities if any (like &quot; or &amp;)
         import html
         return html.unescape(cleaned).strip()
 
@@ -23,7 +21,7 @@ class WikipediaProvider(BaseProvider):
             "srsearch": query,
             "format": "json",
             "utf8": 1,
-            "srlimit": 10  # Return up to 10 results
+            "srlimit": 10
         }
         
         try:
@@ -36,24 +34,30 @@ class WikipediaProvider(BaseProvider):
             
             search_results = data.get("query", {}).get("search", [])
             results = []
-            for item in search_results:
+            for idx, item in enumerate(search_results):
                 page_id = item.get("pageid")
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
                 
                 url = f"https://en.wikipedia.org/?curid={page_id}"
-                description = self._clean_snippet(snippet)
+                cleaned_snippet = self._clean_snippet(snippet)
+                domain = self.extract_domain(url)
+                
+                # Position-based raw score (10.0 for rank 1, down to 1.0)
+                raw_score = float(max(1.0, 10.0 - idx))
                 
                 results.append(
                     SearchResult(
                         title=title,
                         url=url,
-                        description=description or "No description available.",
-                        source=self.name
+                        domain=domain,
+                        snippet=cleaned_snippet or "No description available.",
+                        source=self.name,
+                        published_date=None,
+                        raw_score=raw_score
                     )
                 )
             return results
         except Exception as e:
-            # Log error internally and return empty list to remain robust
             print(f"Wikipedia search failed: {e}")
             return []
