@@ -8,7 +8,9 @@ import {
   AlertCircle, 
   Compass, 
   ArrowRight,
-  Globe
+  Globe,
+  Sliders,
+  Sparkles
 } from "lucide-react";
 import "./App.css";
 
@@ -17,6 +19,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 function App() {
   const [query, setQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [category, setCategory] = useState("all");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -31,11 +34,13 @@ function App() {
     "WebAssembly"
   ];
 
-  const handleSearch = async (e, queryText) => {
+  const handleSearch = async (e, queryText, categoryOverride) => {
     if (e) e.preventDefault();
     
     const targetQuery = queryText || query;
     if (!targetQuery || !targetQuery.trim()) return;
+
+    const selectedCategory = categoryOverride !== undefined ? categoryOverride : category;
 
     setLoading(true);
     setError(null);
@@ -43,19 +48,31 @@ function App() {
     setQuery(targetQuery);
     
     try {
-      const response = await fetch(`${BACKEND_URL}/search?q=${encodeURIComponent(targetQuery)}`);
+      let url = `${BACKEND_URL}/search?q=${encodeURIComponent(targetQuery)}`;
+      if (selectedCategory && selectedCategory !== "all") {
+        url += `&category=${encodeURIComponent(selectedCategory)}`;
+      }
+      
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch results: ${response.statusText}`);
       }
       const data = await response.json();
       setResults(data.results || []);
       setHasSearched(true);
-      setActiveFilter("all"); // reset filter on new search
+      setActiveFilter("all");
     } catch (err) {
       console.error(err);
       setError("Unable to retrieve search results. Make sure the backend server is running.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCategoryChange = (newCategory) => {
+    setCategory(newCategory);
+    if (hasSearched && searchQuery) {
+      handleSearch(null, searchQuery, newCategory);
     }
   };
 
@@ -68,9 +85,9 @@ function App() {
       case "arxiv":
         return <FileText size={14} />;
       case "duckduckgo":
+      case "yahoo":
         return <Globe size={14} />;
       case "google":
-        return <Search size={14} />;
       case "bing":
         return <Search size={14} />;
       default:
@@ -92,6 +109,8 @@ function App() {
         return "Google";
       case "bing":
         return "Bing";
+      case "yahoo":
+        return "Yahoo";
       default:
         return source.charAt(0).toUpperCase() + source.slice(1);
     }
@@ -112,17 +131,14 @@ function App() {
     }
   };
 
-  // Helper to parse sources list from result (handles merged sources)
   const getSourcesList = (sourceStr) => {
     return sourceStr.split(",").map(s => s.trim());
   };
 
-  // Filtered results calculation
   const filteredResults = activeFilter === "all" 
     ? results 
     : results.filter(r => getSourcesList(r.source).includes(activeFilter));
 
-  // Count results per source
   const getSourceCount = (sourceName) => {
     if (sourceName === "all") return results.length;
     return results.filter(r => getSourcesList(r.source).includes(sourceName)).length;
@@ -136,7 +152,7 @@ function App() {
           <h1 className="logo-text">FIND-engine</h1>
         </div>
         <p className="logo-sub">
-          A high-performance search aggregator. Explore Wikipedia, Hacker News, arXiv, DuckDuckGo, Google, and Bing.
+          A high-performance metasearch engine with custom scoring ranking. Explore Wikipedia, Hacker News, arXiv, DuckDuckGo, Google, Bing, and Yahoo.
         </p>
       </header>
 
@@ -148,7 +164,7 @@ function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="What are you looking for?"
+              placeholder="Search across all engines..."
               className="search-input"
               disabled={loading}
               autoFocus
@@ -156,6 +172,42 @@ function App() {
             <button type="submit" className="search-button" disabled={loading}>
               Search
               <ArrowRight size={16} />
+            </button>
+          </div>
+
+          {/* Ranking Personalization Category Selector */}
+          <div className="category-selector">
+            <span className="category-label">
+              <Sliders size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />
+              Ranking Bias:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange("all")}
+              className={`category-chip ${category === "all" ? "active" : ""}`}
+            >
+              Balanced
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange("tech")}
+              className={`category-chip ${category === "tech" ? "active" : ""}`}
+            >
+              Tech & Dev
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange("academic")}
+              className={`category-chip ${category === "academic" ? "active" : ""}`}
+            >
+              Academic
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange("news")}
+              className={`category-chip ${category === "news" ? "active" : ""}`}
+            >
+              News & General
             </button>
           </div>
         </form>
@@ -265,12 +317,20 @@ function App() {
               Bing
               <span className="filter-badge">{getSourceCount("bing")}</span>
             </button>
+            <button
+              onClick={() => setActiveFilter("yahoo")}
+              className={`filter-btn source-yahoo ${activeFilter === "yahoo" ? "active" : ""}`}
+            >
+              {getSourceIcon("yahoo")}
+              Yahoo
+              <span className="filter-badge">{getSourceCount("yahoo")}</span>
+            </button>
           </div>
 
           <div className="results-section">
             <div className="results-info">
               <span>
-                Found {results.length} unique results for <strong>"{searchQuery}"</strong>
+                Found {results.length} results ranked by FIND Engine for <strong>"{searchQuery}"</strong>
               </span>
               {activeFilter !== "all" && (
                 <span>
@@ -302,6 +362,15 @@ function App() {
                   
                   <div className="result-meta-row">
                     <span className="result-domain">{result.domain}</span>
+                    {result.raw_score && (
+                      <>
+                        <span className="meta-dot">•</span>
+                        <span className="score-pill">
+                          <Sparkles size={11} style={{ marginRight: "3px", verticalAlign: "middle" }} />
+                          Score: {result.raw_score}
+                        </span>
+                      </>
+                    )}
                     {result.published_date && (
                       <>
                         <span className="meta-dot">•</span>
@@ -338,9 +407,9 @@ function App() {
           <div className="initial-graphic">
             <Compass size={48} />
           </div>
-          <h3>Aggregated Knowledge</h3>
+          <h3>Custom Engine Ranking</h3>
           <p>
-            FIND-engine performs real-time queries across different engines. Enter a search term to find articles, papers, and community posts.
+            FIND-engine evaluates provider rank, text relevance, cross-engine agreement, freshness, and domain authority to calculate a custom score for every result.
           </p>
         </div>
       )}
