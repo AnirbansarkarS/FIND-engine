@@ -1,140 +1,124 @@
-# FIND-engine
+# FIND-engine - Private Infrastructure Metasearch Engine
 
-FIND-engine is a high-performance search aggregator designed to query multiple search engines and platforms concurrently, normalize their metadata schemas, eliminate duplicate links, and present them in a premium, glassmorphic user interface.
+FIND-engine is a high-performance, private metasearch engine designed to aggregate search queries across multiple platforms (Wikipedia, Hacker News, arXiv, DuckDuckGo, Google, Bing, Yahoo), normalize their schemas, deduplicate links, and serve them securely over an **encrypted TLS channel** within your **private network (Tailscale / WireGuard)**.
 
 ```
-                  Search Query
-                       │
-                       ▼
-               Search Orchestrator
-             /    /    │    \    \
-            /    /     │     \    \
-           ▼    ▼      ▼      ▼    ▼
-          WP   HN    arXiv   DDG  [G/B]*
-           │    │      │      │    │
-           └────┴──┬───┴──────┴────┘
-                   ▼
-              Raw Results
-                   │
-                   ▼
-         Normalization & Parsing
-                   │
-                   ▼
-          URL Deduplication
-                   │
-                   ▼
-            Ranking & Boost
-                   │
-                   ▼
-           React UI Frontend
-```
-*\*G/B represent Google and Bing (optional keyed providers)*
-
----
-
-## Key Features
-
-1. **Concurrent Search Orchestration**: Utilizes Python's `asyncio` and `httpx` to trigger search queries to Wikipedia, Hacker News, arXiv, and DuckDuckGo in parallel.
-2. **Schema Normalization**: Maps diverse metadata from different platforms (Atom XML feeds, JSON hits, raw HTML tables) into a single, unified `SearchResult` schema.
-3. **Smart URL Deduplication**: Standardizes URLs by stripping protocols, `www.`, trailing slashes, and analytics tracker parameters (UTM codes). Merges duplicate links into a single card showing badges for all sourcing engines.
-4. **Weighted Ranking & Boosting**: Automatically boosts search results returned by multiple engines to prioritize common hits.
-5. **Premium Glassmorphic UI**: High-fidelity dark mode interface built with React, styled using fluid typography, micro-interactions, loading skeletons, and interactive brand-colored filter chips.
-
----
-
-## Technical Stack
-
-- **Backend**: FastAPI (Python 3.13), `httpx` (async HTTP queries), `BeautifulSoup` (HTML parser), Pydantic (data validation).
-- **Frontend**: React (Vite template), Vanilla CSS (glassmorphism/containment layouts), `lucide-react` (SVG icons).
-- **Containerization**: Docker, Docker Compose.
-
----
-
-## System Schema
-
-### SearchResult Model (Pydantic / Pydantic BaseModel)
-
-```python
-class SearchResult(BaseModel):
-    title: str
-    url: str
-    domain: str                           # Extracted root domain name
-    snippet: str                          # Standardized text description/abstract
-    source: str                           # Comma-separated sources (e.g. "wikipedia, hackernews")
-    published_date: Optional[str] = None  # ISO format date or relative string
-    raw_score: Optional[float] = 0.0      # Normalised relevance score
+Internet (Blocked / Firewalled)
+   │
+   X  <-- Blocked Public Access
+   │
+Tailscale / WireGuard Overlay Network
+   │
+   ▼
+[Nginx / SSL Reverse Proxy]  (https://search.yourdomain)
+   │
+   ├── [React Frontend]       (Protected UI & /login Portal)
+   ├── [FastAPI Search API]   (JWT Auth & Protected Endpoints)
+   ├── [PostgreSQL]           (User Accounts, Search History & Bookmarks)
+   └── [Redis Cache]          (Fast Search Result Caching & Session Storage)
 ```
 
-### Endpoints
+---
 
-- **`GET /health`**: Standard application status check.
-  - *Response*: `{"status": "healthy"}`
-- **`GET /search?q={query_string}`**: Queries all engines, dedupes results, and returns an interleaved list.
-  - *Response*:
-    ```json
-    {
-      "results": [
-        {
-          "title": "Quantum computing - Wikipedia",
-          "url": "https://en.wikipedia.org/?curid=24609",
-          "domain": "wikipedia.org",
-          "snippet": "Quantum computing is a rapidly-emerging technology that harnesses...",
-          "source": "wikipedia, duckduckgo",
-          "published_date": "2026-08-25T13:42:00Z",
-          "raw_score": 10.0
-        }
-      ]
-    }
-    ```
+## 🔒 Private Security & Architecture
+
+1. **Private Network Access (Tailscale / WireGuard)**: Public access (`0.0.0.0`) from the internet is firewalled. Only authenticated members on your private mesh VPN or local home server network can route traffic to `search.yourdomain`.
+2. **Encrypted HTTPS / TLS**: Nginx acts as an SSL terminating reverse proxy (HTTP/2 enabled, hardened security headers `HSTS`, `X-Frame-Options`, `X-Content-Type-Options`).
+3. **JWT Authentication & `/login` Gateway**: Unauthenticated users are stopped at the private `/login` gateway. All API endpoints enforce JWT Bearer Token validation.
+4. **PostgreSQL Persistence**: Stores encrypted user credentials, search query history logs, and saved result bookmarks.
+5. **Redis Result Caching**: Accelerated query performance with Redis (<5ms response latency for repeated queries) with a 10-minute cache window.
 
 ---
 
-## Installation & Local Startup
+## 🛠️ Tech Stack
 
-### 1. Backend Server
+- **Reverse Proxy / TLS**: Nginx 1.25+ with SSL certificate termination.
+- **Backend API**: FastAPI (Python 3.13), SQLAlchemy 2.0 (Async), `asyncpg`, `redis-py`, PyJWT, Passlib (bcrypt), `httpx`, BeautifulSoup4.
+- **Frontend App**: React (Vite), Vanilla CSS (glassmorphism/dark mode), Lucide Icons, Custom Auth Context.
+- **Database Layer**: PostgreSQL 16 Alpine.
+- **Caching Layer**: Redis 7 Alpine.
+- **Containerization**: Docker & Docker Compose.
 
-Navigate to the `backend/` folder and install dependencies:
+---
+
+## 🚀 Quick Startup & Private Deployment
+
+### 1. Generate SSL Certificates for `search.yourdomain`
+
+Generate self-signed TLS certificates for `search.yourdomain`:
+
+**On Linux / macOS / Git Bash / WSL:**
 ```bash
-pip install -r backend/requirements.txt
+chmod +x scripts/generate-certs.sh
+./scripts/generate-certs.sh
 ```
 
-Create a `.env` file inside `backend/` to configure optional keyed search providers (Google, Bing):
-```env
-GOOGLE_API_KEY=your_google_api_key
-GOOGLE_CX=your_google_custom_search_engine_id
-BING_API_KEY=your_bing_api_key
-```
-*If keys are omitted, the engine runs in keyless mode using Wikipedia, Hacker News, arXiv, and DuckDuckGo.*
-
-Start the FastAPI development server:
-```bash
-python main.py
-```
-The backend API will be available at `http://localhost:8000`. You can inspect interactive documentation at `http://localhost:8000/docs`.
-
-### 2. Frontend App
-
-Navigate to the `frontend/` folder and install packages:
-```bash
-npm install
+**On Windows PowerShell:**
+```powershell
+.\scripts\generate-certs.ps1
 ```
 
-Start the Vite development server:
-```bash
-npm run dev
+*(This creates `search.yourdomain.crt` and `search.yourdomain.key` in `./nginx/certs/`)*
+
+### 2. Configure Local DNS / Hosts File
+
+Add `search.yourdomain` to your local machine's `hosts` file:
+
+**Linux / macOS**: `/etc/hosts`  
+**Windows**: `C:\Windows\System32\drivers\etc\hosts`
+
+```hosts
+127.0.0.1 search.yourdomain
 ```
-The React UI will run at `http://localhost:5173`.
 
----
+### 3. Launch Private Infrastructure via Docker Compose
 
-## Containerization (Docker)
-
-To launch the aggregated services in a containerized environment, use Docker Compose:
+Run all 5 orchestrated services (`postgres`, `redis`, `backend`, `frontend`, `nginx-proxy`):
 
 ```bash
 docker-compose up --build
 ```
 
-The system will spin up:
-- The FastAPI backend at `http://localhost:8000`
-- The React frontend (served via Nginx) at `http://localhost:80`
+---
+
+## 🔑 Accessing Private Search
+
+1. Open your browser and navigate to:
+   ```
+   https://search.yourdomain
+   ```
+2. You will be greeted by the **Private Search Portal `/login`**.
+3. **Default Admin Credentials**:
+   - **Username**: `admin`
+   - **Password**: `admin123`
+4. Click **Unlock Private Search** to access your encrypted metasearch engine!
+
+---
+
+## 📡 API Endpoints & Security
+
+- **`POST /api/auth/login`**: Authenticate and obtain JWT access token.
+- **`GET /api/auth/me`**: Verify JWT token and retrieve profile.
+- **`GET /api/search?q={query}&category={cat}`** *(Protected)*: Execute metasearch across all providers with Redis caching and PostgreSQL query logging.
+- **`GET /api/history`** *(Protected)*: Retrieve user's search history.
+- **`GET /api/bookmarks`** & **`POST /api/bookmarks`** *(Protected)*: Manage saved bookmarks.
+- **`GET /health`**: Health status check for Backend, Database, Redis, and Private Infrastructure.
+
+---
+
+## 🛡️ Tailscale / WireGuard Production Setup
+
+To restrict access exclusively to your Tailscale tailnet or WireGuard VPN:
+
+1. Install Tailscale on your host/VPS:
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+2. Update `docker-compose.yml` `nginx-proxy` ports to bind directly to your Tailscale IP:
+   ```yaml
+   ports:
+     - "100.x.y.z:80:80"
+     - "100.x.y.z:443:443"
+   ```
+3. Enable Tailscale HTTPS / MagicDNS for `search.yourdomain.ts.net` for automatic Let's Encrypt certificates!

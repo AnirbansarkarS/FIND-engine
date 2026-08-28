@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Search, 
   BookOpen, 
@@ -10,21 +10,41 @@ import {
   ArrowRight,
   Globe,
   Sliders,
-  Sparkles
+  Sparkles,
+  Shield,
+  History,
+  Bookmark,
+  LogOut,
+  Zap,
+  Trash2,
+  X,
+  UserCheck
 } from "lucide-react";
+import { useAuth } from "./AuthContext";
+import { LoginModal } from "./LoginModal";
 import "./App.css";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
 function App() {
+  const { isAuthenticated, loading: authLoading, user, logout, authFetch } = useAuth();
+
   const [query, setQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [results, setResults] = useState([]);
+  const [isCached, setIsCached] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Drawer states
+  const [showHistory, setShowHistory] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [bookmarkItems, setBookmarkItems] = useState([]);
+  const [bookmarkedUrls, setBookmarkedUrls] = useState(new Set());
 
   const suggestions = [
     "Quantum Computing",
@@ -33,6 +53,54 @@ function App() {
     "Space Exploration",
     "WebAssembly"
   ];
+
+  // Fetch bookmarks when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadBookmarks();
+    }
+  }, [isAuthenticated]);
+
+  const loadBookmarks = async () => {
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/bookmarks`);
+      if (res.ok) {
+        const data = await res.json();
+        setBookmarkItems(data);
+        setBookmarkedUrls(new Set(data.map(b => b.url)));
+      }
+    } catch (err) {
+      console.error("Failed to load bookmarks:", err);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryItems(data);
+      }
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    }
+  };
+
+  const toggleHistoryDrawer = () => {
+    if (!showHistory) {
+      loadHistory();
+    }
+    setShowHistory(!showHistory);
+    setShowBookmarks(false);
+  };
+
+  const toggleBookmarksDrawer = () => {
+    if (!showBookmarks) {
+      loadBookmarks();
+    }
+    setShowBookmarks(!showBookmarks);
+    setShowHistory(false);
+  };
 
   const handleSearch = async (e, queryText, categoryOverride) => {
     if (e) e.preventDefault();
@@ -48,22 +116,27 @@ function App() {
     setQuery(targetQuery);
     
     try {
-      let url = `${BACKEND_URL}/search?q=${encodeURIComponent(targetQuery)}`;
+      let url = `${BACKEND_URL}/api/search?q=${encodeURIComponent(targetQuery)}`;
       if (selectedCategory && selectedCategory !== "all") {
         url += `&category=${encodeURIComponent(selectedCategory)}`;
       }
       
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (!response.ok) {
+        if (response.status === 401) {
+          logout();
+          throw new Error("Session expired. Please log in again.");
+        }
         throw new Error(`Failed to fetch results: ${response.statusText}`);
       }
       const data = await response.json();
       setResults(data.results || []);
+      setIsCached(!!data.is_cached);
       setHasSearched(true);
       setActiveFilter("all");
     } catch (err) {
       console.error(err);
-      setError("Unable to retrieve search results. Make sure the backend server is running.");
+      setError(err.message || "Unable to retrieve search results. Make sure the backend server is running.");
     } finally {
       setLoading(false);
     }
@@ -73,6 +146,47 @@ function App() {
     setCategory(newCategory);
     if (hasSearched && searchQuery) {
       handleSearch(null, searchQuery, newCategory);
+    }
+  };
+
+  const handleSaveBookmark = async (result) => {
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/bookmarks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: result.title,
+          url: result.url,
+          domain: result.domain,
+          snippet: result.snippet,
+          source: result.source,
+          raw_score: result.raw_score || 0.0
+        })
+      });
+      if (res.ok) {
+        setBookmarkedUrls(prev => new Set([...prev, result.url]));
+        loadBookmarks();
+      }
+    } catch (err) {
+      console.error("Failed to add bookmark:", err);
+    }
+  };
+
+  const handleDeleteBookmark = async (id, url) => {
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/bookmarks/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setBookmarkItems(prev => prev.filter(b => b.id !== id));
+        setBookmarkedUrls(prev => {
+          const next = new Set(prev);
+          next.delete(url);
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error("Failed to delete bookmark:", err);
     }
   };
 
@@ -132,7 +246,7 @@ function App() {
   };
 
   const getSourcesList = (sourceStr) => {
-    return sourceStr.split(",").map(s => s.trim());
+    return (sourceStr || "").split(",").map(s => s.trim());
   };
 
   const filteredResults = activeFilter === "all" 
@@ -144,15 +258,134 @@ function App() {
     return results.filter(r => getSourcesList(r.source).includes(sourceName)).length;
   };
 
+  if (authLoading) {
+    return (
+      <div className="loading-fullscreen">
+        <div className="spinner"></div>
+        <p>Connecting to Private Infrastructure...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginModal />;
+  }
+
   return (
     <>
+      <nav className="top-nav">
+        <div className="nav-left">
+          <div className="net-status-badge">
+            <Shield size={14} className="shield-online-icon" />
+            <span>Private Network (TLS & Tailscale)</span>
+          </div>
+        </div>
+        <div className="nav-right">
+          <div className="user-pill">
+            <UserCheck size={14} />
+            <span>{user?.username || "Authenticated"}</span>
+          </div>
+          <button 
+            onClick={toggleHistoryDrawer} 
+            className={`nav-action-btn ${showHistory ? "active" : ""}`}
+            title="Private Search History"
+          >
+            <History size={16} />
+            <span>History</span>
+          </button>
+          <button 
+            onClick={toggleBookmarksDrawer} 
+            className={`nav-action-btn ${showBookmarks ? "active" : ""}`}
+            title="Saved Bookmarks"
+          >
+            <Bookmark size={16} />
+            <span>Bookmarks</span>
+            {bookmarkItems.length > 0 && (
+              <span className="nav-badge-count">{bookmarkItems.length}</span>
+            )}
+          </button>
+          <button onClick={logout} className="logout-btn" title="Sign Out">
+            <LogOut size={16} />
+          </button>
+        </div>
+      </nav>
+
+      {/* History Drawer */}
+      {showHistory && (
+        <div className="drawer-panel">
+          <div className="drawer-header">
+            <h3><History size={18} style={{ marginRight: "8px" }} /> Private Search History</h3>
+            <button onClick={() => setShowHistory(false)} className="close-btn"><X size={18} /></button>
+          </div>
+          <div className="drawer-content">
+            {historyItems.length > 0 ? (
+              historyItems.map((item) => (
+                <div 
+                  key={item.id} 
+                  className="history-item"
+                  onClick={() => {
+                    handleSearch(null, item.query, item.category);
+                    setShowHistory(false);
+                  }}
+                >
+                  <div className="history-main">
+                    <span className="history-query">{item.query}</span>
+                    <span className="history-cat">{item.category}</span>
+                  </div>
+                  <div className="history-sub">
+                    <span>{item.result_count} hits</span>
+                    <span className="meta-dot">•</span>
+                    <span>{formatDate(item.created_at)}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="empty-drawer">No search history recorded yet.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bookmarks Drawer */}
+      {showBookmarks && (
+        <div className="drawer-panel">
+          <div className="drawer-header">
+            <h3><Bookmark size={18} style={{ marginRight: "8px" }} /> Saved Bookmarks</h3>
+            <button onClick={() => setShowBookmarks(false)} className="close-btn"><X size={18} /></button>
+          </div>
+          <div className="drawer-content">
+            {bookmarkItems.length > 0 ? (
+              bookmarkItems.map((bm) => (
+                <div key={bm.id} className="bookmark-item">
+                  <div className="bookmark-content">
+                    <a href={bm.url} target="_blank" rel="noopener noreferrer" className="bookmark-title">
+                      {bm.title}
+                    </a>
+                    <span className="bookmark-domain">{bm.domain}</span>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteBookmark(bm.id, bm.url)} 
+                    className="delete-bm-btn"
+                    title="Remove Bookmark"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="empty-drawer">No saved bookmarks in your private database.</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <header className="header">
         <div className="logo-container">
           <Search size={38} className="logo-icon" />
           <h1 className="logo-text">FIND-engine</h1>
         </div>
         <p className="logo-sub">
-          A high-performance metasearch engine with custom scoring ranking. Explore Wikipedia, Hacker News, arXiv, DuckDuckGo, Google, Bing, and Yahoo.
+          Private Infrastructure Metasearch Engine. Integrated with PostgreSQL, Redis Caching, and TLS Security.
         </p>
       </header>
 
@@ -164,7 +397,7 @@ function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search across all engines..."
+              placeholder="Search privately across all engines..."
               className="search-input"
               disabled={loading}
               autoFocus
@@ -175,7 +408,6 @@ function App() {
             </button>
           </div>
 
-          {/* Ranking Personalization Category Selector */}
           <div className="category-selector">
             <span className="category-label">
               <Sliders size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />
@@ -330,67 +562,83 @@ function App() {
           <div className="results-section">
             <div className="results-info">
               <span>
-                Found {results.length} results ranked by FIND Engine for <strong>"{searchQuery}"</strong>
+                Found {results.length} results for <strong>"{searchQuery}"</strong>
               </span>
-              {activeFilter !== "all" && (
-                <span>
-                  Showing {filteredResults.length} from {getSourceLabel(activeFilter)}
+              {isCached && (
+                <span className="redis-cache-badge">
+                  <Zap size={12} style={{ marginRight: "4px" }} />
+                  Redis Cache Hit (&lt;5ms)
                 </span>
               )}
             </div>
 
             {filteredResults.length > 0 ? (
-              filteredResults.map((result, idx) => (
-                <article key={`${result.domain}-${idx}`} className="result-card">
-                  <div className="result-card-header">
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="result-title-link"
-                    >
-                      {result.title}
-                    </a>
-                    <div className="source-badges-container">
-                      {getSourcesList(result.source).map(src => (
-                        <span key={src} className={`source-badge ${src}`}>
-                          {getSourceLabel(src)}
-                        </span>
-                      ))}
+              filteredResults.map((result, idx) => {
+                const isBookmarked = bookmarkedUrls.has(result.url);
+                return (
+                  <article key={`${result.domain}-${idx}`} className="result-card">
+                    <div className="result-card-header">
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="result-title-link"
+                      >
+                        {result.title}
+                      </a>
+                      <div className="source-badges-container">
+                        {getSourcesList(result.source).map(src => (
+                          <span key={src} className={`source-badge ${src}`}>
+                            {getSourceLabel(src)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="result-meta-row">
-                    <span className="result-domain">{result.domain}</span>
-                    {result.raw_score && (
-                      <>
-                        <span className="meta-dot">•</span>
-                        <span className="score-pill">
-                          <Sparkles size={11} style={{ marginRight: "3px", verticalAlign: "middle" }} />
-                          Score: {result.raw_score}
-                        </span>
-                      </>
-                    )}
-                    {result.published_date && (
-                      <>
-                        <span className="meta-dot">•</span>
-                        <span className="result-date">{formatDate(result.published_date)}</span>
-                      </>
-                    )}
-                  </div>
-                  
-                  <p className="result-description">{result.snippet}</p>
-                  
-                  <a
-                    href={result.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="result-url-action"
-                  >
-                    Visit Source <ExternalLink size={12} style={{ marginLeft: "4px" }} />
-                  </a>
-                </article>
-              ))
+                    
+                    <div className="result-meta-row">
+                      <span className="result-domain">{result.domain}</span>
+                      {result.raw_score && (
+                        <>
+                          <span className="meta-dot">•</span>
+                          <span className="score-pill">
+                            <Sparkles size={11} style={{ marginRight: "3px", verticalAlign: "middle" }} />
+                            Score: {result.raw_score}
+                          </span>
+                        </>
+                      )}
+                      {result.published_date && (
+                        <>
+                          <span className="meta-dot">•</span>
+                          <span className="result-date">{formatDate(result.published_date)}</span>
+                        </>
+                      )}
+                    </div>
+                    
+                    <p className="result-description">{result.snippet}</p>
+                    
+                    <div className="result-actions-row">
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="result-url-action"
+                      >
+                        Visit Source <ExternalLink size={12} style={{ marginLeft: "4px" }} />
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSaveBookmark(result)}
+                        className={`bookmark-action-btn ${isBookmarked ? "saved" : ""}`}
+                        disabled={isBookmarked}
+                      >
+                        <Bookmark size={13} style={{ marginRight: "4px" }} />
+                        {isBookmarked ? "Saved in Postgres" : "Bookmark"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
             ) : (
               <div className="no-results-state">
                 <Compass size={40} style={{ color: "var(--text-muted)", marginBottom: "16px" }} />
@@ -407,9 +655,9 @@ function App() {
           <div className="initial-graphic">
             <Compass size={48} />
           </div>
-          <h3>Custom Engine Ranking</h3>
+          <h3>Private Metasearch Architecture</h3>
           <p>
-            FIND-engine evaluates provider rank, text relevance, cross-engine agreement, freshness, and domain authority to calculate a custom score for every result.
+            FIND-engine operates inside your isolated network. Encrypted via HTTPS, backed by PostgreSQL query history, and powered by Redis acceleration.
           </p>
         </div>
       )}

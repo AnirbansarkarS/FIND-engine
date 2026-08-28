@@ -1,23 +1,77 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: find_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: findengine
+      POSTGRES_USER: finduser
+      POSTGRES_PASSWORD: findpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finduser -d findengine"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: find_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
+    container_name: find_backend
     environment:
+      - DATABASE_URL=postgresql+asyncpg://finduser:findpassword@postgres:5432/findengine
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-find_private_infra_secret_key_2026}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_CX=${GOOGLE_CX}
       - BING_API_KEY=${BING_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: always
 
   frontend:
     build:
       context: ./frontend
       args:
-        - VITE_BACKEND_URL=http://localhost:8000
-    ports:
-      - "80:80"
+        - VITE_BACKEND_URL=
+    container_name: find_frontend
     depends_on:
       - backend
     restart: always
+
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: find_nginx_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
