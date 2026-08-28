@@ -12,12 +12,13 @@ from providers import (
     DuckDuckGoProvider,
     GoogleProvider,
     BingProvider,
-    YahooProvider
+    YahooProvider,
+    ExaProvider
 )
 
 class SearchOrchestrator:
     def __init__(self):
-        # Register all 7 search providers
+        # Register all 8 search providers (including Exa AI)
         self.providers = [
             WikipediaProvider(),
             HackerNewsProvider(),
@@ -25,8 +26,10 @@ class SearchOrchestrator:
             DuckDuckGoProvider(),
             GoogleProvider(),
             BingProvider(),
-            YahooProvider()
+            YahooProvider(),
+            ExaProvider()
         ]
+
 
     def normalize_url(self, url: str) -> str:
         try:
@@ -130,12 +133,13 @@ class SearchOrchestrator:
         if category_preference:
             pref = category_preference.lower()
             src_list = [s.lower() for s in sources_list]
-            if pref == "tech" and any(s in src_list for s in ["hackernews", "arxiv"]):
+            if pref == "tech" and any(s in src_list for s in ["hackernews", "arxiv", "exa"]):
                 personalization = 1.0
-            elif pref == "academic" and any(s in src_list for s in ["arxiv", "wikipedia"]):
+            elif pref == "academic" and any(s in src_list for s in ["arxiv", "wikipedia", "exa"]):
                 personalization = 1.0
-            elif pref == "news" and any(s in src_list for s in ["hackernews", "yahoo", "google", "bing", "duckduckgo"]):
+            elif pref == "news" and any(s in src_list for s in ["hackernews", "yahoo", "google", "bing", "duckduckgo", "exa"]):
                 personalization = 1.0
+
 
         final_score = (
             0.30 * provider_score +

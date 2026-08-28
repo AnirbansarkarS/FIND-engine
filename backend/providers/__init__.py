@@ -6,6 +6,7 @@ from .duckduckgo import DuckDuckGoProvider
 from .google import GoogleProvider
 from .bing import BingProvider
 from .yahoo import YahooProvider
+from .exa import ExaProvider
 
 __all__ = [
     "SearchResult",
@@ -16,5 +17,7 @@ __all__ = [
     "DuckDuckGoProvider",
     "GoogleProvider",
     "BingProvider",
-    "YahooProvider"
+    "YahooProvider",
+    "ExaProvider"
 ]
+

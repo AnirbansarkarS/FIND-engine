@@ -192,6 +192,8 @@ function App() {
 
   const getSourceIcon = (source) => {
     switch (source) {
+      case "exa":
+        return <Sparkles size={14} />;
       case "wikipedia":
         return <BookOpen size={14} />;
       case "hackernews":
@@ -211,6 +213,8 @@ function App() {
 
   const getSourceLabel = (source) => {
     switch (source) {
+      case "exa":
+        return "Exa AI";
       case "wikipedia":
         return "Wikipedia";
       case "hackernews":
@@ -229,6 +233,7 @@ function App() {
         return source.charAt(0).toUpperCase() + source.slice(1);
     }
   };
+
 
   const formatDate = (dateStr) => {
     if (!dateStr) return null;
@@ -502,6 +507,14 @@ function App() {
               <span className="filter-badge">{getSourceCount("all")}</span>
             </button>
             <button
+              onClick={() => setActiveFilter("exa")}
+              className={`filter-btn source-exa ${activeFilter === "exa" ? "active" : ""}`}
+            >
+              {getSourceIcon("exa")}
+              Exa AI
+              <span className="filter-badge">{getSourceCount("exa")}</span>
+            </button>
+            <button
               onClick={() => setActiveFilter("wikipedia")}
               className={`filter-btn source-wikipedia ${activeFilter === "wikipedia" ? "active" : ""}`}
             >
@@ -509,6 +522,7 @@ function App() {
               Wikipedia
               <span className="filter-badge">{getSourceCount("wikipedia")}</span>
             </button>
+
             <button
               onClick={() => setActiveFilter("hackernews")}
               className={`filter-btn source-hackernews ${activeFilter === "hackernews" ? "active" : ""}`}
