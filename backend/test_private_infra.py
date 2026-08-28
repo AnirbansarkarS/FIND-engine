@@ -2,9 +2,13 @@ import os
 import asyncio
 import pytest
 from httpx import AsyncClient, ASGITransport
+import dotenv
+
+dotenv.load_dotenv()
 
 # Set test database URL before database engine is initialized
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+
 
 import database
 from database import init_db, get_db, get_engine, get_sessionmaker, Base, User, SearchHistory, Bookmark

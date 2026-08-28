@@ -2,7 +2,10 @@ import { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext(null);
 
+// Use relative URLs — Vite dev proxy forwards /api → http://localhost:8000
+// In production, set VITE_BACKEND_URL to your domain if needed
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem("find_auth_token") || null);

@@ -392,11 +392,18 @@
   border: 1px solid transparent;
 }
 
+.source-badge.exa {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.35);
+}
+
 .source-badge.wikipedia {
   background: rgba(99, 102, 241, 0.12);
   color: var(--wikipedia-color);
   border-color: rgba(99, 102, 241, 0.25);
 }
+
 
 .source-badge.hackernews {
   background: rgba(249, 115, 22, 0.12);
