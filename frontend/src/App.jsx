@@ -24,7 +24,9 @@ import { useAuth } from "./AuthContext";
 import { LoginModal } from "./LoginModal";
 import "./App.css";
 
+// Use relative URLs — Vite dev proxy forwards /api → http://localhost:8000
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+
 
 function App() {
   const { isAuthenticated, loading: authLoading, user, logout, authFetch } = useAuth();

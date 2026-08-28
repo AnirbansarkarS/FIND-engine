@@ -1,28 +1,49 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime, timezone
 from typing import AsyncGenerator
-from sqlalchemy import String, Integer, DateTime, Text, Float, ForeignKey, Boolean
+from sqlalchemy import String, Integer, DateTime, Text, Float, ForeignKey, Boolean, event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 _engine = None
 
+def _get_db_url() -> str:
+    """
+    Returns the database URL. Defaults to SQLite for zero-config local dev.
+    Set DATABASE_URL env var to a postgresql+asyncpg:// URL for production.
+    """
+    url = os.getenv("DATABASE_URL", "")
+    if url:
+        # Support plain postgres:// URLs by converting to asyncpg driver
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://") and "+asyncpg" not in url:
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+    # Local default: SQLite in the backend directory
+    db_path = os.path.join(os.path.dirname(__file__), "findengine.db")
+    return f"sqlite+aiosqlite:///{db_path}"
+
 def get_engine():
     global _engine
     if _engine is None:
-        db_url = os.getenv(
-            "DATABASE_URL", 
-            "postgresql+asyncpg://finduser:findpassword@localhost:5432/findengine"
-        )
-        if db_url.startswith("sqlite"):
-            _engine = create_async_engine(db_url, echo=False)
+        db_url = _get_db_url()
+        if "sqlite" in db_url:
+            _engine = create_async_engine(
+                db_url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+            )
         else:
             _engine = create_async_engine(
-                db_url, 
-                echo=False, 
-                pool_size=10, 
+                db_url,
+                echo=False,
+                pool_size=10,
                 max_overflow=20,
-                pool_pre_ping=True
+                pool_pre_ping=True,
             )
     return _engine
 
@@ -85,4 +106,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
-
