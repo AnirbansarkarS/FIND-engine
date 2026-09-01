@@ -13,13 +13,16 @@ from providers import (
     GoogleProvider,
     BingProvider,
     YahooProvider,
-    ExaProvider
+    ExaProvider,
+    LocalCrawlerProvider
 )
 
 class SearchOrchestrator:
     def __init__(self):
-        # Register all 8 search providers (including Exa AI)
+        # Register all 9 search providers (including Local Crawler)
+        self.local_provider = LocalCrawlerProvider()
         self.providers = [
+            self.local_provider,
             WikipediaProvider(),
             HackerNewsProvider(),
             ArxivProvider(),
@@ -29,6 +32,7 @@ class SearchOrchestrator:
             YahooProvider(),
             ExaProvider()
         ]
+
 
 
     def normalize_url(self, url: str) -> str:
@@ -156,11 +160,17 @@ class SearchOrchestrator:
         if not query or not query.strip():
             return []
 
+        cat = (category or "").lower().strip()
+        active_providers = self.providers
+        if cat in ("local", "crawler", "local_crawler"):
+            active_providers = [self.local_provider]
+
         async with httpx.AsyncClient() as client:
-            tasks = [provider.search(client, query) for provider in self.providers]
+            tasks = [provider.search(client, query) for provider in active_providers]
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
             
             unique_results = {}
+
             
             for res in raw_results:
                 if not isinstance(res, list):

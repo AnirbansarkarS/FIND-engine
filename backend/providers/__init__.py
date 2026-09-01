@@ -7,6 +7,7 @@ from .google import GoogleProvider
 from .bing import BingProvider
 from .yahoo import YahooProvider
 from .exa import ExaProvider
+from .crawler import LocalCrawlerProvider
 
 __all__ = [
     "SearchResult",
@@ -18,6 +19,8 @@ __all__ = [
     "GoogleProvider",
     "BingProvider",
     "YahooProvider",
-    "ExaProvider"
+    "ExaProvider",
+    "LocalCrawlerProvider"
 ]
+
 

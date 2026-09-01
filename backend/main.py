@@ -10,10 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 
-from database import init_db, get_db, User, SearchHistory, Bookmark
+from database import init_db, get_db, User, SearchHistory, Bookmark, CrawledDocument
 from cache import cache_manager
 from auth import hash_password, verify_password, create_access_token, get_current_user
 from orchestrator import SearchOrchestrator
+from crawler import crawler_service, PRESET_SEED_PACKS
 
 # Pydantic Schemas
 class LoginRequest(BaseModel):
@@ -32,6 +33,13 @@ class BookmarkCreate(BaseModel):
     snippet: Optional[str] = ""
     source: str
     raw_score: Optional[float] = 0.0
+
+class CrawlStartRequest(BaseModel):
+    seed_urls: Optional[List[str]] = None
+    preset_pack: Optional[str] = None
+    target_pages: Optional[int] = 100
+    depth_limit: Optional[int] = 2
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -268,6 +276,78 @@ async def delete_bookmark(
     await db.commit()
     return {"status": "deleted"}
 
+
+# Web Crawler API Endpoints
+@app.get("/api/crawler/status")
+async def get_crawler_status(current_user: User = Depends(get_current_user)):
+    return await crawler_service.get_stats()
+
+
+@app.post("/api/crawler/start")
+async def start_crawler(
+    payload: CrawlStartRequest,
+    current_user: User = Depends(get_current_user)
+):
+    seeds: List[str] = payload.seed_urls or []
+    if payload.preset_pack and payload.preset_pack in PRESET_SEED_PACKS:
+        seeds.extend(PRESET_SEED_PACKS[payload.preset_pack])
+
+    target = payload.target_pages or 100
+    depth = payload.depth_limit or 2
+    return await crawler_service.start_crawl(
+        seed_urls=seeds if seeds else None,
+        target_pages=target,
+        depth_limit=depth
+    )
+
+
+@app.post("/api/crawler/stop")
+async def stop_crawler(current_user: User = Depends(get_current_user)):
+    return await crawler_service.stop_crawl()
+
+
+@app.get("/api/crawler/documents")
+async def get_crawled_documents(
+    limit: int = Query(50, ge=1, le=500),
+    q: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(CrawledDocument).order_by(desc(CrawledDocument.crawled_at)).limit(limit)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        stmt = select(CrawledDocument).where(
+            (CrawledDocument.title.ilike(pattern)) | (CrawledDocument.url.ilike(pattern)) | (CrawledDocument.domain.ilike(pattern))
+        ).order_by(desc(CrawledDocument.crawled_at)).limit(limit)
+
+    res = await db.execute(stmt)
+    docs = res.scalars().all()
+    return [
+        {
+            "id": d.id,
+            "url": d.url,
+            "domain": d.domain,
+            "title": d.title,
+            "snippet": d.snippet,
+            "word_count": d.word_count,
+            "depth": d.depth,
+            "http_status": d.http_status,
+            "crawled_at": d.crawled_at.isoformat() if d.crawled_at else None
+        }
+        for d in docs
+    ]
+
+
+@app.post("/api/crawler/seeds")
+async def add_crawler_seeds(
+    seeds: List[str],
+    current_user: User = Depends(get_current_user)
+):
+    added = await crawler_service.add_seeds(seeds)
+    return {"added": added, "status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

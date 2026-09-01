@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Search, 
+
   BookOpen, 
   Newspaper, 
   FileText, 
@@ -18,11 +19,15 @@ import {
   Zap,
   Trash2,
   X,
-  UserCheck
+  UserCheck,
+  Bot,
+  Database
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
 import { LoginModal } from "./LoginModal";
+import { CrawlerDashboard } from "./CrawlerDashboard";
 import "./App.css";
+
 
 // Use relative URLs — Vite dev proxy forwards /api → http://localhost:8000
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
@@ -44,9 +49,11 @@ function App() {
   // Drawer states
   const [showHistory, setShowHistory] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showCrawlerDashboard, setShowCrawlerDashboard] = useState(false);
   const [historyItems, setHistoryItems] = useState([]);
   const [bookmarkItems, setBookmarkItems] = useState([]);
   const [bookmarkedUrls, setBookmarkedUrls] = useState(new Set());
+
 
   const suggestions = [
     "Quantum Computing",
@@ -193,7 +200,11 @@ function App() {
   };
 
   const getSourceIcon = (source) => {
-    switch (source) {
+    const s = (source || "").toLowerCase();
+    if (s.includes("local crawler") || s.includes("local_crawler") || s === "local") {
+      return <Bot size={14} />;
+    }
+    switch (s) {
       case "exa":
         return <Sparkles size={14} />;
       case "wikipedia":
@@ -214,7 +225,11 @@ function App() {
   };
 
   const getSourceLabel = (source) => {
-    switch (source) {
+    const s = (source || "").toLowerCase();
+    if (s.includes("local crawler") || s.includes("local_crawler") || s === "local") {
+      return "Local Crawler";
+    }
+    switch (s) {
       case "exa":
         return "Exa AI";
       case "wikipedia":
@@ -235,6 +250,7 @@ function App() {
         return source.charAt(0).toUpperCase() + source.slice(1);
     }
   };
+
 
 
   const formatDate = (dateStr) => {
@@ -293,10 +309,23 @@ function App() {
             <span>{user?.username || "Authenticated"}</span>
           </div>
           <button 
+            onClick={() => {
+              setShowCrawlerDashboard(true);
+              setShowHistory(false);
+              setShowBookmarks(false);
+            }} 
+            className={`nav-action-btn crawler-nav-btn ${showCrawlerDashboard ? "active" : ""}`}
+            title="Autonomous Web Crawler Dashboard"
+          >
+            <Bot size={16} />
+            <span>Web Crawler</span>
+          </button>
+          <button 
             onClick={toggleHistoryDrawer} 
             className={`nav-action-btn ${showHistory ? "active" : ""}`}
             title="Private Search History"
           >
+
             <History size={16} />
             <span>History</span>
           </button>
@@ -429,6 +458,16 @@ function App() {
             </button>
             <button
               type="button"
+              onClick={() => handleCategoryChange("local")}
+              className={`category-chip ${category === "local" ? "active" : ""}`}
+              style={category === "local" ? { background: "linear-gradient(135deg, #10b981, #059669)", color: "#fff", borderColor: "#10b981" } : {}}
+            >
+              <Bot size={12} style={{ marginRight: "4px" }} />
+              Local Index (Offline)
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleCategoryChange("tech")}
               className={`category-chip ${category === "tech" ? "active" : ""}`}
             >
@@ -508,6 +547,18 @@ function App() {
               All Results
               <span className="filter-badge">{getSourceCount("all")}</span>
             </button>
+            {getSourceCount("Local Crawler") > 0 && (
+              <button
+                onClick={() => setActiveFilter("Local Crawler")}
+                className={`filter-btn source-crawler ${activeFilter === "Local Crawler" ? "active" : ""}`}
+                style={activeFilter === "Local Crawler" ? { background: "rgba(16, 185, 129, 0.15)", color: "#10b981", borderColor: "#10b981" } : {}}
+              >
+                <Bot size={14} style={{ marginRight: "4px" }} />
+                Local Crawler
+                <span className="filter-badge" style={{ background: "rgba(16, 185, 129, 0.2)", color: "#10b981" }}>{getSourceCount("Local Crawler")}</span>
+              </button>
+            )}
+
             <button
               onClick={() => setActiveFilter("exa")}
               className={`filter-btn source-exa ${activeFilter === "exa" ? "active" : ""}`}
@@ -677,8 +728,14 @@ function App() {
           </p>
         </div>
       )}
+
+      <CrawlerDashboard 
+        isOpen={showCrawlerDashboard} 
+        onClose={() => setShowCrawlerDashboard(false)} 
+      />
     </>
   );
 }
 
 export default App;
+
