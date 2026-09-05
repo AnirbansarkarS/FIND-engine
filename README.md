@@ -106,6 +106,7 @@ docker-compose up --build
 
 ---
 
+
 ## 🛡️ Tailscale / WireGuard Production Setup
 
 To restrict access exclusively to your Tailscale tailnet or WireGuard VPN:
